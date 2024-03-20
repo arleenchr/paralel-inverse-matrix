@@ -1,15 +1,16 @@
 #ifndef MATRIX_H
 #define MATRIX_H
 
-#define MAX_SIZE 512
+typedef struct Matrix {
+    int col;
+    int row;
+    double* buffer;
+} Matrix;
 
-struct Matrix {
-    int size;
-    double buffer[MAX_SIZE][MAX_SIZE];
-};
-
-void readMatrixFromFile(const char* filename, struct Matrix* matrix);
-void createIdentityMatrix(struct Matrix* matrix);
-void printMatrix(struct Matrix* matrix);
+Matrix createMatrix(int row, int col);
+void freeMatrix(Matrix *mat);
+Matrix readMatrixFromFile(const char* filename);
+Matrix createIdentityMatrix(int size);
+void printMatrix(Matrix matrix);
 
 #endif
