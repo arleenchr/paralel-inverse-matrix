@@ -9,8 +9,8 @@ void gatherMatrix(struct Matrix *matrix, struct Matrix *identity);
 void gaussianElimination(struct Matrix *matrix, struct Matrix *identity);
 
 int main(void) {
-    struct Matrix inputMatrix;
-    struct Matrix identityMatrix;
+    Matrix inputMatrix;
+    Matrix identityMatrix;
 
     MPI_Init(NULL, NULL);
 
@@ -30,32 +30,33 @@ int main(void) {
         /* Init matrix */
         char filename[256];
         scanf("%255s", filename);
-        readMatrixFromFile(filename, &inputMatrix);
-        printMatrix(&inputMatrix);
+        inputMatrix = readMatrixFromFile(filename);
+        printMatrix(inputMatrix);
+        printf("-------\n");
         
         identityMatrix.size = inputMatrix.size;
-        createIdentityMatrix(&identityMatrix);
-        printMatrix(&identityMatrix);
+        identityMatrix = createIdentityMatrix(identityMatrix.size);
+        printMatrix(identityMatrix);
 
 
         // Partial pivoting
-        double d;
-        for(int i = inputMatrix.size; i > 1; --i)
-        {
-            if(inputMatrix.buffer[i-1][1] < inputMatrix.buffer[i][1])
-            {
-                for(int j = 0; j < inputMatrix.size; ++j)
-                {
-                    d = inputMatrix.buffer[i][j];
-                    inputMatrix.buffer[i][j] = inputMatrix.buffer[i-1][j];
-                    inputMatrix.buffer[i-1][j] = d;
+        // double d;
+        // for(int i = inputMatrix.size; i > 1; --i)
+        // {
+        //     if(inputMatrix.buffer[i-1][1] < inputMatrix.buffer[i][1])
+        //     {
+        //         for(int j = 0; j < inputMatrix.size; ++j)
+        //         {
+        //             d = inputMatrix.buffer[i][j];
+        //             inputMatrix.buffer[i][j] = inputMatrix.buffer[i-1][j];
+        //             inputMatrix.buffer[i-1][j] = d;
 
-                    d = identityMatrix.buffer[i][j];
-                    identityMatrix.buffer[i][j] = identityMatrix.buffer[i-1][j];
-                    identityMatrix.buffer[i-1][j] = d;
-                }
-            }
-        }
+        //             d = identityMatrix.buffer[i][j];
+        //             identityMatrix.buffer[i][j] = identityMatrix.buffer[i-1][j];
+        //             identityMatrix.buffer[i-1][j] = d;
+        //         }
+        //     }
+        // }
 
 
     }
@@ -71,7 +72,12 @@ int main(void) {
 
     MPI_Finalize();
 
-    // printMatrix(&identityMatrix);
+    if (world_rank == 0) {
+        printMatrix(identityMatrix);
+    }
+
+    freeMatrix(&inputMatrix);
+    freeMatrix(&identityMatrix);
 
     return 0;
 }

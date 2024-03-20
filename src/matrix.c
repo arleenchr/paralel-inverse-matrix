@@ -2,7 +2,34 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void readMatrixFromFile(const char* filename, struct Matrix* matrix) {
+Matrix createMatrix(int size) {
+    Matrix mat;
+    mat.size = size;
+    
+    mat.buffer = (double **)malloc(size * sizeof(double *));
+    if (mat.buffer == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(1);
+    }
+    for (int i = 0; i < size; i++) {
+        mat.buffer[i] = (double *)malloc(size * sizeof(double));
+        if (mat.buffer[i] == NULL) {
+            fprintf(stderr, "Memory allocation failed\n");
+            exit(1);
+        }
+    }
+    
+    return mat;
+}
+
+void freeMatrix(Matrix *mat) {
+    for (int i = 0; i < mat->size; i++) {
+        free(mat->buffer[i]);
+    }
+    free(mat->buffer);
+}
+
+Matrix readMatrixFromFile(const char* filename) {
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "test_cases/%s", filename);
 
@@ -12,22 +39,26 @@ void readMatrixFromFile(const char* filename, struct Matrix* matrix) {
         exit(1);
     }
 
+    int size;
+
     // Read matrix size
-    if (fscanf(file, "%d", &matrix->size) != 1) {
+    if (fscanf(file, "%d", &size) != 1) {
         printf("Error reading matrix size.\n");
         exit(1);
     }
 
+    Matrix matrix = createMatrix(size);
+
     // Size validation
-    if (matrix->size <= 0 || matrix->size > MAX_SIZE) {
+    if (matrix.size <= 0 || matrix.size % 4 != 0) {
         printf("Invalid matrix size.\n");
         exit(1);
     }
 
     // Read matrix buffer
-    for (int i = 0; i < matrix->size; i++) {
-        for (int j = 0; j < matrix->size; j++) {
-            if (fscanf(file, "%lf", &(matrix->buffer[i][j])) != 1) {
+    for (int i = 0; i < matrix.size; i++) {
+        for (int j = 0; j < matrix.size; j++) {
+            if (fscanf(file, "%lf", &(matrix.buffer[i][j])) != 1) {
                 printf("Error reading file.\n");
                 exit(1);
             }
@@ -35,21 +66,27 @@ void readMatrixFromFile(const char* filename, struct Matrix* matrix) {
     }
 
     fclose(file);
+    return matrix;
 }
 
-void createIdentityMatrix(struct Matrix* matrix){
-    /* Precondition: matrix is an empty matrix size of n
-     * with 0 as all of its elements
-     */
-    for (int i=0; i<matrix->size; i++){
-        (matrix->buffer[i][i]) = 1.;
+Matrix createIdentityMatrix(int size){
+    Matrix matrix = createMatrix(size);
+    for (int i=0; i<matrix.size; i++){
+        for (int j=0; j<matrix.size; j++){
+            if (i == j) {
+                matrix.buffer[i][j] = 1.;
+            } else {
+                matrix.buffer[i][j] = 0.;
+            }
+        }
     }
+    return matrix;
 }
 
-void printMatrix(struct Matrix* matrix){
-    for (int i=0; i<matrix->size; i++){
-        for (int j=0; j<matrix->size; j++){
-            printf("%.16f ", matrix->buffer[i][j]);
+void printMatrix(Matrix matrix){
+    for (int i=0; i<matrix.size; i++){
+        for (int j=0; j<matrix.size; j++){
+            printf("%.16f ", matrix.buffer[i][j]);
         }
         printf("\n");
     }
