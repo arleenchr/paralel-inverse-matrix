@@ -31,11 +31,11 @@ int main(void) {
         char filename[256];
         scanf("%255s", filename);
         readMatrixFromFile(filename, &inputMatrix);
-        // printMatrix(&inputMatrix);
+        printMatrix(&inputMatrix);
         
         identityMatrix.size = inputMatrix.size;
         createIdentityMatrix(&identityMatrix);
-        // printMatrix(&identityMatrix);
+        printMatrix(&identityMatrix);
 
 
         // Partial pivoting
@@ -60,18 +60,18 @@ int main(void) {
 
     }
 
-    // Distribute matrix to all processes
-    distributeMatrix(&inputMatrix, &identityMatrix);
+    // // Distribute matrix to all processes
+    // distributeMatrix(&inputMatrix, &identityMatrix);
 
-    // Perform Gaussian elimination in parallel
-    gaussianElimination(&inputMatrix, &identityMatrix);
+    // // Perform Gaussian elimination in parallel
+    // gaussianElimination(&inputMatrix, &identityMatrix);
 
-    // Gather the results
-    gatherMatrix(&inputMatrix, &identityMatrix);
+    // // Gather the results
+    // gatherMatrix(&inputMatrix, &identityMatrix);
 
     MPI_Finalize();
 
-    printMatrix(&identityMatrix);
+    // printMatrix(&identityMatrix);
 
     return 0;
 }
@@ -80,13 +80,13 @@ int main(void) {
 void distributeMatrix(struct Matrix *matrix, struct Matrix *identity) {
     MPI_Bcast(&(matrix->size), 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&(matrix->buffer[0][0]), matrix->size * matrix->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&(identity->buffer[0][0]), identity->size * identity->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    // MPI_Bcast(&(identity->buffer[0][0]), identity->size * identity->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 }
 
 // Function to gather the matrix from all processes
 void gatherMatrix(struct Matrix *matrix, struct Matrix *identity) {
     MPI_Gather(MPI_IN_PLACE, matrix->size * matrix->size, MPI_DOUBLE, &(matrix->buffer[0][0]), matrix->size * matrix->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather(MPI_IN_PLACE, identity->size * identity->size, MPI_DOUBLE, &(identity->buffer[0][0]), identity->size * identity->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    // MPI_Gather(MPI_IN_PLACE, identity->size * identity->size, MPI_DOUBLE, &(identity->buffer[0][0]), identity->size * identity->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 }
 
 // Function to perform Gaussian elimination in parallel
@@ -107,7 +107,7 @@ void gaussianElimination(struct Matrix *matrix, struct Matrix *identity) {
                 double factor = matrix->buffer[i][k] / matrix->buffer[k][k];
                 for (int j = k; j < matrix->size; j++) {
                     matrix->buffer[i][j] -= factor * matrix->buffer[k][j];
-                    identity->buffer[i][j] -= factor * identity->buffer[k][j];
+                    // identity->buffer[i][j] -= factor * identity->buffer[k][j];
                 }
             }
         }
