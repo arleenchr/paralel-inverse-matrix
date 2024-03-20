@@ -4,7 +4,7 @@
 
 void readMatrixFromFile(const char* filename, struct Matrix* matrix) {
     char filepath[256];
-    snprintf(filepath, sizeof(filepath), "../../test_cases/%s", filename);
+    snprintf(filepath, sizeof(filepath), "test_cases/%s", filename);
 
     FILE *file = fopen(filepath, "r");
     if (file == NULL) {
@@ -35,6 +35,15 @@ void readMatrixFromFile(const char* filename, struct Matrix* matrix) {
     }
 
     fclose(file);
+}
+
+void createIdentityMatrix(struct Matrix* matrix){
+    /* Precondition: matrix is an empty matrix size of n
+     * with 0 as all of its elements
+     */
+    for (int i=0; i<matrix->size; i++){
+        (matrix->buffer[i][i]) = 1.;
+    }
 }
 
 void printMatrix(struct Matrix* matrix){

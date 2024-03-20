@@ -9,6 +9,7 @@ struct Matrix {
 };
 
 void readMatrixFromFile(const char* filename, struct Matrix* matrix);
+void createIdentityMatrix(struct Matrix* matrix);
 void printMatrix(struct Matrix* matrix);
 
 #endif
