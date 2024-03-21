@@ -108,7 +108,8 @@ int main(void) {
     size_t endRow = startRow + nRow;
 
 
-    MPI_Request requests[world_size];
+    MPI_Request requestsInput[world_size];
+    MPI_Request requestsOutput[world_size];
    
     /* Allocate input matrix & identity matrix in each processes */
     procInputMatrix = createMatrix(nRow, inputMatrixCol);
@@ -181,13 +182,14 @@ int main(void) {
             printMatrix(procOutputMatrix);
 
             /* Send the pivot row to other processes */
+            // MPI_Request send_req[2];
             for (int i = currRank + 1; i < world_size; i++) {
                 MPI_Isend(procInputMatrix.buffer + procInputMatrix.col * procRow, 
                         procInputMatrix.col, MPI_DOUBLE, i, 0,
-                        MPI_COMM_WORLD, &requests[i]);
+                        MPI_COMM_WORLD, &requestsInput[i]);
                 MPI_Isend(procOutputMatrix.buffer + procOutputMatrix.col * procRow, 
                         procOutputMatrix.col, MPI_DOUBLE, i, 0,
-                        MPI_COMM_WORLD, &requests[i]);
+                        MPI_COMM_WORLD, &requestsOutput[i]);
             }
             // MPI_Bcast(
             //     procInputMatrix.buffer + procRow * inputMatrixCol, inputMatrixCol, MPI_DOUBLE, 
@@ -211,9 +213,12 @@ int main(void) {
             }
 
             // Wait and check if there are any messages
-            for (int i = procRow + 1; i < world_size-1; i++) {
+            // MPI_Waitall(world_size, send_req, MPI_STATUSES_IGNORE);
+            for (int i = currRank + 1; i < world_size-1; i++) {
                 printf("tunggu bnggg -proc%d\n", world_rank);
-                MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
+                MPI_Wait(&requestsInput[i], MPI_STATUS_IGNORE);
+                MPI_Wait(&requestsOutput[i], MPI_STATUS_IGNORE);
+                // MPI_Wait(&send_req[1], MPI_STATUS_IGNORE);
             }
         } else {
             /* other processes */
