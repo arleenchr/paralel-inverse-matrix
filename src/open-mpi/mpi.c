@@ -41,23 +41,19 @@ int main(void) {
 
         MPI_Bcast(&inputMatrix.col, 1, MPI_INT, 0, MPI_COMM_WORLD);
         inputMatrixCol = inputMatrix.col;
-        // MPI_Recv(&matrix_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        
-        // for (int i=1; i<world_size; i++){
-        //     MPI_Send(&inputMatrix.size, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-        // }
-
     } else {
         MPI_Bcast(&inputMatrixCol, 1, MPI_INT, 0, MPI_COMM_WORLD);
     }
 
     // MPI_Recv(&matrix_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
    
+    /* Allocate input matrix & identity matrix in each processes */
     procInputMatrix = createMatrix(inputMatrixCol / world_size, inputMatrixCol);
     procIdentityMatrix = createMatrix(inputMatrixCol / world_size, inputMatrixCol);
     // printf("inputMatrixCol process %d = %d\n", world_rank, inputMatrixCol);
-    printf("input matrix size process %d = (%d x %d)\n", world_rank, procInputMatrix.row, procInputMatrix.col);
+    // printf("input matrix size process %d = (%d x %d)\n", world_rank, procInputMatrix.row, procInputMatrix.col);
 
+    /* Scatter the input matrix & identity matrix from process 0 */
     MPI_Scatter(
         inputMatrix.buffer, procInputMatrix.row * procInputMatrix.col, MPI_DOUBLE, 
         procInputMatrix.buffer, procInputMatrix.row * procInputMatrix.col, MPI_DOUBLE, 
@@ -67,13 +63,28 @@ int main(void) {
         procIdentityMatrix.buffer, procInputMatrix.row * procInputMatrix.col, MPI_DOUBLE, 
         0, MPI_COMM_WORLD);
 
-    printf("procInputMatrix from proc%d\n", world_rank);
-    printMatrix(procInputMatrix);
-    printMatrix(procIdentityMatrix);
+    // printf("procInputMatrix from proc%d\n", world_rank);
+    // printMatrix(procInputMatrix);
+    // printMatrix(procIdentityMatrix);
+
+    /* Partial pivoting */
+    for (size_t i = 0; i < procInputMatrix.row; i++){
+        int pivotIdx = i * procInputMatrix.col + world_rank * procInputMatrix.row + i;
+        if (procInputMatrix.buffer[pivotIdx] == 0.){
+            // swap row
+        } else if (procInputMatrix.buffer[pivotIdx] != 1.) {
+            int pivot = procInputMatrix.buffer[pivotIdx];
+            for (size_t j = pivotIdx; j < pivotIdx + procInputMatrix.col - i - world_rank * procInputMatrix.row; j++) {
+                procInputMatrix.buffer[j] /= pivot;
+            }
+        }
+        printMatrix(procInputMatrix);
+    }
 
     MPI_Finalize();
 
     freeMatrix(&procInputMatrix);
+    freeMatrix(&procIdentityMatrix);
 
     if (world_rank == 0) {
         freeMatrix(&inputMatrix);
