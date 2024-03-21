@@ -7,14 +7,14 @@
 #include <stdbool.h>
 #include "../matrix.h"
 
-void swapRow(Matrix* matrix, size_t row1, size_t row2){
+void swapRow(Matrix* matrix, int row1, int row2){
     if(row1 < 0 || row1 >= matrix->row || row2 < 0 || row2 >= matrix->row){
         printf("Invalid row indices\n");
         return;
     }
 
-    size_t startIndexRow2 = row2 * matrix->col;
-    size_t startIndexRow1 = row1 * matrix->col;
+    int startIndexRow2 = row2 * matrix->col;
+    int startIndexRow1 = row1 * matrix->col;
 
     double* temp_row = (double*)malloc(matrix->col * sizeof(double));
     if(temp_row == NULL){
@@ -95,16 +95,18 @@ int main(void) {
         inputMatrixCol = inputMatrix.col;
     } else {
         MPI_Bcast(&inputMatrixCol, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
     }
+
+    /* Allocate an array for pivot row */
+    double* pivotRowInput = (double*)malloc(inputMatrixCol * sizeof(double));
+    double* pivotRowOutput = (double*)malloc(inputMatrixCol * sizeof(double));
 
     /* Define number of rows, start row & end row for each processes */
     int nRow = inputMatrixCol / world_size;
-    size_t startRow = world_rank + nRow;
+    size_t startRow = world_rank * nRow;
     size_t endRow = startRow + nRow;
 
-    /* Allocate an array for pivot row */
-    double* pivotRowInput = (double*)malloc(procInputMatrix.col * sizeof(double));
-    double* pivotRowOutput = (double*)malloc(procOutputMatrix.col * sizeof(double));
 
     MPI_Request requests[world_size];
    
@@ -131,19 +133,49 @@ int main(void) {
     /* Gauss Elimination */
     for (size_t row = 0; row < endRow; row++){
         int currRank = row / nRow;
+
+        printf("world_rank = %d; currRank = %d\n", world_rank, currRank);
         
         /* if the current rank is in this process */
         if (world_rank == currRank){
             int procRow = row % nRow;
 
             /* Partial pivoting */
-            int pivot = procInputMatrix.buffer[procRow * procInputMatrix.col + row];
+            size_t pivotIdx = procRow * procInputMatrix.col + row;
+            double pivot = procInputMatrix.buffer[pivotIdx];
+
+            if (pivot == 0.){
+                printf("pivotnya 0 bang ga bisa -proc%d\n", world_rank);
+                // swap row
+                bool found = false;
+                int rowNum = procRow + 1;
+
+                while (!found){
+                    // check if there's any row below in the same process and if the element below the pivot is not zero
+                    if (rowNum < procInputMatrix.col 
+                        && procInputMatrix.buffer[pivotIdx + procInputMatrix.col] != 0.) {
+                        found = true;
+                        // printf("i=%zu, rowNum=%zu\n", i, rowNum);
+                        swapRow(&procInputMatrix, procRow, rowNum);
+                        printMatrix(procInputMatrix);
+                        pivot = procInputMatrix.buffer[procRow * procInputMatrix.col + row];
+                        break;
+                        // printMatrix(procInputMatrix);
+                    } else if (world_rank < world_size-1) {
+                        // check for other processes
+
+                    } else {
+                        printf("Matrix can not be inversed\n");
+                        exit(1);
+                    }
+                }
+            }
 
             for (int col = row; col < procInputMatrix.col; col++) {
                 procInputMatrix.buffer[procRow * procInputMatrix.col + col] /= pivot;
                 procOutputMatrix.buffer[procRow * procOutputMatrix.col + col] /= pivot;
             }
-            printf("\nPROCESS %d\nInput Matrix:\n", world_rank);
+            printf("\nPROCESS %d pivoting\nInput Matrix:\n", world_rank);
             printMatrix(procInputMatrix);
             printf("Output Matrix:\n");
             printMatrix(procOutputMatrix);
@@ -157,11 +189,17 @@ int main(void) {
                         procOutputMatrix.col, MPI_DOUBLE, i, 0,
                         MPI_COMM_WORLD, &requests[i]);
             }
+            // MPI_Bcast(
+            //     procInputMatrix.buffer + procRow * inputMatrixCol, inputMatrixCol, MPI_DOUBLE, 
+            //     currRank, MPI_COMM_WORLD);
+            // MPI_Bcast(
+            //     procOutputMatrix.buffer + procRow * inputMatrixCol, inputMatrixCol, MPI_DOUBLE, 
+            //     currRank, MPI_COMM_WORLD);
 
             /* Eliminate (zero-ing) the elements "below" the pivot */
             for (int eliminateRow = procRow + 1; eliminateRow < nRow; eliminateRow++) {
                 // Get the scaling factor for elimination
-                int factor = procInputMatrix.buffer[eliminateRow * procInputMatrix.col + row];
+                double factor = procInputMatrix.buffer[eliminateRow * procInputMatrix.col + row];
 
                 // Execute subtraction
                 for (int col = row; col < procInputMatrix.col; col++) {
@@ -173,19 +211,21 @@ int main(void) {
             }
 
             // Wait and check if there are any messages
-            for (int i = procRow + 1; i < world_size; i++) {
+            for (int i = procRow + 1; i < world_size-1; i++) {
+                printf("tunggu bnggg -proc%d\n", world_rank);
                 MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
             }
         } else {
             /* other processes */
             /* Receive the pivot row from the "current rank process" */
+            printf("terima dulu -proc%d\n", world_rank);
             MPI_Recv(pivotRowInput, procInputMatrix.col, MPI_DOUBLE, currRank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             MPI_Recv(pivotRowOutput, procOutputMatrix.col, MPI_DOUBLE, currRank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
             // Skip rows that have been fully processed
             for (int eliminateRow = 0; eliminateRow < nRow; eliminateRow++) {
                 // Get the scaling factor for elimination
-                int factor = procInputMatrix.buffer[eliminateRow * procInputMatrix.col + row];
+                double factor = procInputMatrix.buffer[eliminateRow * procInputMatrix.col + row];
 
                 // Remove the pivot
                 for (int col = row; col < procInputMatrix.col; col++) {
@@ -193,6 +233,11 @@ int main(void) {
                     procOutputMatrix.buffer[eliminateRow * procOutputMatrix.col + col] -= pivotRowOutput[col] * factor;
                 }
             }
+
+            printf("\nPROCESS %d eliminating\nInput Matrix:\n", world_rank);
+            printMatrix(procInputMatrix);
+            printf("Output Matrix:\n");
+            printMatrix(procOutputMatrix);
         }
     }
 
@@ -266,12 +311,16 @@ int main(void) {
     }
     */
 
+    printf("dh beres bng -proc%d\n", world_rank);
+
     // Gather the final results into rank 0
     MPI_Gather(procInputMatrix.buffer, nRow * procInputMatrix.col, MPI_DOUBLE, inputMatrix.buffer, nRow * procInputMatrix.col, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Gather(procOutputMatrix.buffer, nRow * procInputMatrix.col, MPI_DOUBLE, identityMatrix.buffer, nRow * procInputMatrix.col, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     MPI_Finalize();
 
+    printf("Input Matrix:\n");
+    printMatrix(inputMatrix);
     printf("Inversed Matrix:\n");
     printMatrix(identityMatrix);
 
@@ -285,42 +334,3 @@ int main(void) {
 
     return 0;
 }
-
-
-// // Function to distribute the matrix to all processes
-// void distributeMatrix(struct Matrix *matrix, struct Matrix *identity) {
-//     MPI_Bcast(&(matrix->size), 1, MPI_INT, 0, MPI_COMM_WORLD);
-//     MPI_Bcast(&(matrix->buffer[0][0]), matrix->size * matrix->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-//     // MPI_Bcast(&(identity->buffer[0][0]), identity->size * identity->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-// }
-
-// // Function to gather the matrix from all processes
-// void gatherMatrix(struct Matrix *matrix, struct Matrix *identity) {
-//     MPI_Gather(MPI_IN_PLACE, matrix->size * matrix->size, MPI_DOUBLE, &(matrix->buffer[0][0]), matrix->size * matrix->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-//     // MPI_Gather(MPI_IN_PLACE, identity->size * identity->size, MPI_DOUBLE, &(identity->buffer[0][0]), identity->size * identity->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-// }
-
-// // Function to perform Gaussian elimination in parallel
-// void gaussianElimination(struct Matrix *matrix, struct Matrix *identity) {
-//     int world_rank;
-//     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-    
-//     int world_size;
-//     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    
-//     for (int k = 0; k < matrix->size; k++) {
-//         // Broadcast pivot row to all processes
-//         MPI_Bcast(&(matrix->buffer[k][0]), matrix->size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-        
-//         // Parallelize the elimination step
-//         for (int i = world_rank; i < matrix->size; i += world_size) {
-//             if (i != k) {
-//                 double factor = matrix->buffer[i][k] / matrix->buffer[k][k];
-//                 for (int j = k; j < matrix->size; j++) {
-//                     matrix->buffer[i][j] -= factor * matrix->buffer[k][j];
-//                     // identity->buffer[i][j] -= factor * identity->buffer[k][j];
-//                 }
-//             }
-//         }
-//     }
-// }
