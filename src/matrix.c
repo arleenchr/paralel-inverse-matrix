@@ -36,6 +36,8 @@ Matrix readMatrixFromFile(const char* filename){
 
     int size;
 
+    int size;
+
     // Read matrix size
     if (fscanf(file, "%d", &size) != 1) {
         printf("Error reading matrix size.\n");
