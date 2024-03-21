@@ -24,7 +24,7 @@ void freeMatrix(Matrix *matrix) {
     matrix->row = 0;
 }
 
-Matrix readMatrixFromFile(const char* filename) {
+Matrix readMatrixFromFile(const char* filename){
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "test_cases/%s", filename);
 
@@ -33,6 +33,8 @@ Matrix readMatrixFromFile(const char* filename) {
         printf("Error opening file.\n");
         exit(1);
     }
+
+    int size;
 
     int size;
 
