@@ -57,14 +57,6 @@ int main()
         }
     }
 
-    for (int i=0; i<n; i++){
-        for (int j=0; j<n*2; j++){
-            printf("%.16f ", mat[i][j]);
-        }
-        printf("\n");
-    }
-    printf("\n------------\n");
-
     // Reducing To Diagonal Matrix
     for(i = 0; i < n; ++i)
     {
@@ -78,13 +70,6 @@ int main()
                     mat[j][k] -= mat[i][k]*d;
                 }
             }
-            for (int i=0; i<n; i++){
-                for (int j=0; j<n*2; j++){
-                    printf("%.16f ", mat[i][j]);
-                }
-                printf("\n");
-            }
-            printf("\n------------\n");
         }
     }
     
