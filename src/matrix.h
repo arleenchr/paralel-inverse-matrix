@@ -12,5 +12,6 @@ void freeMatrix(Matrix *mat);
 Matrix readMatrixFromFile(const char* filename);
 Matrix createIdentityMatrix(int size);
 void printMatrix(Matrix matrix);
+double* getColFromMatrix(Matrix m, size_t colNum);
 
 #endif

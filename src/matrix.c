@@ -1,6 +1,7 @@
-#include "matrix.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
+#include "matrix.h"
 
 Matrix createMatrix(int row, int col) {
     Matrix matrix;
@@ -85,4 +86,16 @@ void printMatrix(Matrix matrix){
         }
         printf("\n");
     }
+}
+
+double* getColFromMatrix(Matrix m, size_t colNum){
+    double* col = (double *)malloc(m.row * sizeof(double));
+    if (col == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(1);
+    }
+    for (size_t i = 0; i < m.row; i++){
+        col[i] = m.buffer[i * m.col + colNum];
+    }
+    return col;
 }
