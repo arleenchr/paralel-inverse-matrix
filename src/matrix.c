@@ -25,20 +25,11 @@ void freeMatrix(Matrix *matrix) {
     matrix->row = 0;
 }
 
-Matrix readMatrixFromFile(const char* filename){
-    char filepath[256];
-    snprintf(filepath, sizeof(filepath), "test_cases/%s", filename);
-
-    FILE *file = fopen(filepath, "r");
-    if (file == NULL) {
-        printf("Error opening file.\n");
-        exit(1);
-    }
-
+Matrix readMatrixFromFile(){
     int size;
 
     // Read matrix size
-    if (fscanf(file, "%d", &size) != 1) {
+    if (fscanf(stdin, "%d", &size) != 1) {
         printf("Error reading matrix size.\n");
         exit(1);
     }
@@ -54,14 +45,12 @@ Matrix readMatrixFromFile(const char* filename){
     // Read matrix buffer
     for (int i = 0; i < matrix.row; i++) {
         for (int j = 0; j < matrix.col; j++) {
-            if (fscanf(file, "%lf", &(matrix.buffer[i * matrix.col + j])) != 1) {
+            if (fscanf(stdin, "%lf", &(matrix.buffer[i * matrix.col + j])) != 1) {
                 printf("Error reading file.\n");
                 exit(1);
             }
         }
     }
-
-    fclose(file);
     return matrix;
 }
 
@@ -82,7 +71,7 @@ Matrix createIdentityMatrix(int size){
 void printMatrix(Matrix matrix){
     for (int i = 0; i < matrix.row; i++) {
         for (int j = 0; j < matrix.col; j++) {
-            printf("%.2f\t", matrix.buffer[i * matrix.col + j]);
+            printf("%.6f ", matrix.buffer[i * matrix.col + j]);
         }
         printf("\n");
     }

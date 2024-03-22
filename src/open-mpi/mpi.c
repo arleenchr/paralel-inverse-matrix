@@ -14,9 +14,15 @@ void printRow (double* row, int column){
     printf("\n");
 }
 
+double* getRow (Matrix m, size_t rowNum){
+    double* row = (double *)calloc(m.col, sizeof(double));
+    memcpy(row, &(m.buffer[rowNum * m.row]), m.row * sizeof(double));
+    return row;
+}
+
 void swapRow(Matrix* matrix, int row1, int row2){
     if(row1 < 0 || row1 >= matrix->row || row2 < 0 || row2 >= matrix->row){
-        printf("Invalid row indices\n");
+        fprintf(stderr, "Invalid row indices\n");
         return;
     }
 
@@ -25,7 +31,7 @@ void swapRow(Matrix* matrix, int row1, int row2){
 
     double* temp_row = (double*)malloc(matrix->col * sizeof(double));
     if(temp_row == NULL){
-        printf("Memory allocation failed\n");
+        fprintf(stderr, "Memory allocation failed\n");
         return;
     }
 
@@ -60,16 +66,16 @@ int main(void) {
 
     if (world_rank == 0){
         /* Init matrix */
-        char filename[256];
-        scanf("%255s", filename);
+        // char filename[256];
+        // scanf("%255s", filename);       
 
-        inputMatrix = readMatrixFromFile(filename);
-        printMatrix(inputMatrix);
-        printf("-------\n");
+        inputMatrix = readMatrixFromFile();
+        // printMatrix(inputMatrix);
+        // printf("-------\n");
 
         identityMatrix = createIdentityMatrix(inputMatrix.col);
-        printMatrix(identityMatrix);
-        printf("-------\n");
+        // printMatrix(identityMatrix);
+        // printf("-------\n");
         size = inputMatrix.col;
     }
     MPI_Bcast(&size, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -89,15 +95,15 @@ int main(void) {
             if (colBuffer[i] == 0.){
                 // swap rows
                 // search for the nearest non-zero row
-                for (size_t swapIdx = i; swapIdx < size; swapIdx++){
+                for (size_t swapIdx = i+1; swapIdx < size; swapIdx++){
                     if (colBuffer[swapIdx] != 0.){
                         swapRow(&inputMatrix, i, swapIdx);
                         swapRow(&identityMatrix, i, swapIdx);
                         // printf("swap row %zu & %zu\n", i, swapIdx);
                         break;
-                    } else {
+                    } else if (swapIdx == size - 1) {
                         invertible = false;
-                        printf("Matrix can not be inversed.\n");
+                        fprintf(stderr, "Matrix can not be inversed.\n");
                     }
                 }          
             }
@@ -137,14 +143,91 @@ int main(void) {
             outputRowToBeDivided, nRow, MPI_DOUBLE,
             identityMatrix.buffer + i * size, nRow, MPI_DOUBLE, 0, MPI_COMM_WORLD);
         
-        if (world_rank == 0){
-            printf("Input Matrix:\n");
-            printMatrix(inputMatrix);
-            printf("Inversed Matrix:\n");
-            printMatrix(identityMatrix);
+        // free inputRowToBeDivided & outputRowToBeDivided
+        free(inputRowToBeDivided);
+        free(outputRowToBeDivided);
+
+        // if (world_rank == 0){
+        //     printf("Input Matrix:\n");
+        //     printMatrix(inputMatrix);
+        //     printf("Inversed Matrix:\n");
+        //     printMatrix(identityMatrix);
+        // }
+
+        /* Eliminating */
+        // printf("\n===== ELIMINATING =====\n");
+        double* inputPivotRow = (double *)calloc(size, sizeof(double));
+        double* outputPivotRow = (double *)calloc(size, sizeof(double));
+
+        if (world_rank == 0) {
+            inputPivotRow = getRow(inputMatrix, i);
+            outputPivotRow = getRow(identityMatrix, i);
         }
+        MPI_Bcast(inputPivotRow, size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Bcast(outputPivotRow, size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        // printf("input pivot row i = %zu, proc%d\n", i, world_rank);
+        // printRow(inputPivotRow,size);
+        // printf("output pivot row i = %zu, proc%d\n", i, world_rank);
+        // printRow(outputPivotRow,size);
+
+        /* Scatter the inputMatrix to all processes for elimination */
+        MPI_Scatter(
+            inputMatrix.buffer, nRow * size, MPI_DOUBLE, 
+            procInputMatrix.buffer, nRow * size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Scatter(
+            identityMatrix.buffer, nRow * size, MPI_DOUBLE, 
+            procOutputMatrix.buffer, nRow * size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        
+        // printf("input matrix proc%d\n", world_rank);
+        // printMatrix(procInputMatrix);
+        // printf("output matrix proc%d\n", world_rank);
+        // printMatrix(procOutputMatrix);
+        // MPI_Barrier(MPI_COMM_WORLD);
+
+        for (size_t localRow = 0; localRow < nRow; localRow++){
+            if (localRow != i - world_rank * nRow){
+                // eliminate each row
+                double eliminateFactor = procInputMatrix.buffer[localRow * size + i];
+
+                // subtract
+                for (size_t col = 0; col < size; col++){
+                    // printf("SUBTRACT col=%zu\n", col);
+                    procInputMatrix.buffer[localRow * size + col] -=
+                        inputPivotRow[col] * eliminateFactor;
+                    procOutputMatrix.buffer[localRow * size + col] -=
+                        outputPivotRow[col] * eliminateFactor;
+                }
+                
+                // printf("\nPROCESS %d eliminating\nInput Matrix:\n", world_rank);
+                // printMatrix(procInputMatrix);
+                // printf("Output Matrix:\n");
+                // printMatrix(procOutputMatrix);
+            }
+        }
+
+        MPI_Gather(
+            procInputMatrix.buffer, nRow * size, MPI_DOUBLE,
+            inputMatrix.buffer, nRow * size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather(
+            procOutputMatrix.buffer, nRow * size, MPI_DOUBLE,
+            identityMatrix.buffer, nRow * size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        
+        free(inputPivotRow);
+        free(outputPivotRow);
+
     }
-    
+
+    freeMatrix(&procInputMatrix);
+    freeMatrix(&procOutputMatrix);
+
+    if (world_rank == 0){
+        // printf("Input Matrix:\n");
+        // printMatrix(inputMatrix);
+        printf("%d\n",size);
+        printMatrix(identityMatrix);
+        freeMatrix(&inputMatrix);
+        freeMatrix(&identityMatrix);
+    }
     
     MPI_Finalize();
 

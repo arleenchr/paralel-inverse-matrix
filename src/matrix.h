@@ -9,7 +9,7 @@ typedef struct Matrix {
 
 Matrix createMatrix(int row, int col);
 void freeMatrix(Matrix *mat);
-Matrix readMatrixFromFile(const char* filename);
+Matrix readMatrixFromFile();
 Matrix createIdentityMatrix(int size);
 void printMatrix(Matrix matrix);
 double* getColFromMatrix(Matrix m, size_t colNum);
