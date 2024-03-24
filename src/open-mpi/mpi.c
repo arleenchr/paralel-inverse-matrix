@@ -7,6 +7,7 @@
 #include <string.h>
 #include "../matrix.h"
 
+/*Display elements of a row*/
 void printRow (double* row, int column){
     for (int i=0; i<column; i++){
         printf("%.2f ", row[i]);
@@ -14,12 +15,14 @@ void printRow (double* row, int column){
     printf("\n");
 }
 
+/*Getter: row in a certain index*/
 double* getRow (Matrix m, size_t rowNum){
     double* row = (double *)calloc(m.col, sizeof(double));
     memcpy(row, &(m.buffer[rowNum * m.row]), m.row * sizeof(double));
     return row;
 }
 
+/*Swap row with another row*/
 void swapRow(Matrix* matrix, int row1, int row2){
     if(row1 < 0 || row1 >= matrix->row || row2 < 0 || row2 >= matrix->row){
         fprintf(stderr, "Invalid row indices\n");
@@ -65,17 +68,9 @@ int main(void) {
     MPI_Get_processor_name(processor_name, &name_len);
 
     if (world_rank == 0){
-        /* Init matrix */
-        // char filename[256];
-        // scanf("%255s", filename);       
-
+        /* Init matrix */     
         inputMatrix = readMatrixFromFile();
-        // printMatrix(inputMatrix);
-        // printf("-------\n");
-
         identityMatrix = createIdentityMatrix(inputMatrix.col);
-        // printMatrix(identityMatrix);
-        // printf("-------\n");
         size = inputMatrix.col;
     }
     MPI_Bcast(&size, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -89,17 +84,16 @@ int main(void) {
     // iterate every row
     for (size_t i = 0; i < size; i++){
         /* Partial Pivoting */
-        /* Swap-swapan */
+        /* Swapping indivisible row */
         if (world_rank == 0){
             double* colBuffer = getColFromMatrix(inputMatrix, i);
             if (colBuffer[i] == 0.){
-                // swap rows
+                // Swap rows
                 // search for the nearest non-zero row
                 for (size_t swapIdx = i+1; swapIdx < size; swapIdx++){
                     if (colBuffer[swapIdx] != 0.){
                         swapRow(&inputMatrix, i, swapIdx);
                         swapRow(&identityMatrix, i, swapIdx);
-                        // printf("swap row %zu & %zu\n", i, swapIdx);
                         break;
                     } else if (swapIdx == size - 1) {
                         invertible = false;
@@ -147,15 +141,8 @@ int main(void) {
         free(inputRowToBeDivided);
         free(outputRowToBeDivided);
 
-        // if (world_rank == 0){
-        //     printf("Input Matrix:\n");
-        //     printMatrix(inputMatrix);
-        //     printf("Inversed Matrix:\n");
-        //     printMatrix(identityMatrix);
-        // }
 
         /* Eliminating */
-        // printf("\n===== ELIMINATING =====\n");
         double* inputPivotRow = (double *)calloc(size, sizeof(double));
         double* outputPivotRow = (double *)calloc(size, sizeof(double));
 
@@ -165,10 +152,6 @@ int main(void) {
         }
         MPI_Bcast(inputPivotRow, size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
         MPI_Bcast(outputPivotRow, size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-        // printf("input pivot row i = %zu, proc%d\n", i, world_rank);
-        // printRow(inputPivotRow,size);
-        // printf("output pivot row i = %zu, proc%d\n", i, world_rank);
-        // printRow(outputPivotRow,size);
 
         /* Scatter the inputMatrix to all processes for elimination */
         MPI_Scatter(
@@ -177,12 +160,6 @@ int main(void) {
         MPI_Scatter(
             identityMatrix.buffer, nRow * size, MPI_DOUBLE, 
             procOutputMatrix.buffer, nRow * size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-        
-        // printf("input matrix proc%d\n", world_rank);
-        // printMatrix(procInputMatrix);
-        // printf("output matrix proc%d\n", world_rank);
-        // printMatrix(procOutputMatrix);
-        // MPI_Barrier(MPI_COMM_WORLD);
 
         for (size_t localRow = 0; localRow < nRow; localRow++){
             if (localRow != i - world_rank * nRow){
@@ -191,17 +168,11 @@ int main(void) {
 
                 // subtract
                 for (size_t col = 0; col < size; col++){
-                    // printf("SUBTRACT col=%zu\n", col);
                     procInputMatrix.buffer[localRow * size + col] -=
                         inputPivotRow[col] * eliminateFactor;
                     procOutputMatrix.buffer[localRow * size + col] -=
                         outputPivotRow[col] * eliminateFactor;
                 }
-                
-                // printf("\nPROCESS %d eliminating\nInput Matrix:\n", world_rank);
-                // printMatrix(procInputMatrix);
-                // printf("Output Matrix:\n");
-                // printMatrix(procOutputMatrix);
             }
         }
 
@@ -221,8 +192,6 @@ int main(void) {
     freeMatrix(&procOutputMatrix);
 
     if (world_rank == 0){
-        // printf("Input Matrix:\n");
-        // printMatrix(inputMatrix);
         printf("%d\n",size);
         printMatrix(identityMatrix);
         freeMatrix(&inputMatrix);
