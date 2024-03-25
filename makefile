@@ -2,10 +2,10 @@ OUTPUT_FOLDER = bin
 
 all: serial parallel
 
-parallel:
+parallel-mpi:
 	@mpicc src/matrix.c src/open-mpi/mpi.c -o $(OUTPUT_FOLDER)/mpi
 
-run-parallel:
+run-parallel-mpi:
 	@mpirun -n 4 ./$(OUTPUT_FOLDER)/mpi
 
 serial:
