@@ -57,9 +57,9 @@ int main(void) {
     #pragma omp barrier
     double start = omp_get_wtime();
 
-    #pragma omp parallel num_threads(8) shared(inputMatrix, identityMatrix, invertible, size)
-    {
-        #pragma omp for
+    // #pragma omp parallel num_threads(8) shared(inputMatrix, identityMatrix, invertible, size)
+    // {
+    //     #pragma omp for
         for (size_t i = 0; i < size; i++){
             /* Partial Pivoting */
             /* Swapping indivisible row */
@@ -88,8 +88,8 @@ int main(void) {
 
             int swapIdx = -1;
 
-            #pragma omp critical
-            {
+            // #pragma omp critical
+            // {
                 if (colBuffer[i] == 0. && invertible) {
                     // Search for the nearest non-zero row
                     for (size_t j = i + 1; j < size; j++) {
@@ -102,7 +102,7 @@ int main(void) {
                         }
                     }
                 }
-            }
+            // }
 
             if (swapIdx != -1) {
                 swapRow(&inputMatrix, i, swapIdx);
@@ -112,22 +112,23 @@ int main(void) {
             free(colBuffer);
 
             // Ensure all threads have checked invertibility before proceeding
-            #pragma omp flush(invertible)
+            // #pragma omp flush(invertible)
             // #pragma omp barrier
             if (!invertible) {
-                // exit(1);
-                #pragma omp cancel for
+                exit(1);
+                // #pragma omp cancel for
             }
-        }
-    }
+        // }
+    // }
 
-    #pragma omp parallel num_threads(8) shared(inputMatrix, identityMatrix, invertible, size)
-    {
+    // #pragma omp parallel num_threads(8) shared(inputMatrix, identityMatrix, invertible, size)
+    // {
         /* Eliminating */
         /* Reducing to upper triangle matrix */
-        double eliminateFactor;
+            double eliminateFactor;
         // #pragma omp for private(eliminateFactor)
-        for (size_t i = 0; i < size; i++){
+        // for (size_t i = 0; i < size; i++){
+            #pragma omp for
             for (size_t j = 0; j < size; j++){
                 if (i != j){
                     eliminateFactor = inputMatrix.buffer[j * size + i] / inputMatrix.buffer[i * size + i];
@@ -137,25 +138,25 @@ int main(void) {
                     }
                 }
             }
-        }
+        // }
 
         /* Reducing to diagonal matrix */
-        #pragma omp for
-        for (size_t i = 0; i < size; i++){
+        // #pragma omp for
+        // for (size_t i = 0; i < size; i++){
             /* Divide the row by the pivot factor */
             double pivotFactor = inputMatrix.buffer[i * size + i];
 
-            // #pragma omp for
+            #pragma omp for
             for (int j = 0; j < size; j++){
                 inputMatrix.buffer[i * size + j] /= pivotFactor;
                 identityMatrix.buffer[i * size + j] /= pivotFactor;
             }
         }
-    }
+    // }
 
     printf("%d\n",size);
-    printMatrix(inputMatrix);
-    // printMatrix(identityMatrix);
+    // printMatrix(inputMatrix);
+    printMatrix(identityMatrix);
 
     #pragma omp barrier
     double end = omp_get_wtime();
