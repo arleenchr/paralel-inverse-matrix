@@ -5,6 +5,7 @@
         "array": "c",
         "initializer_list": "c",
         "utility": "c",
-        "matrix.h": "c"
+        "matrix.h": "c",
+        "stdlib.h": "c"
     }
 }

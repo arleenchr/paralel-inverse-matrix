@@ -17,6 +17,21 @@ parallel-mp:
 run-parallel-mp:
 	@./$(OUTPUT_FOLDER)/mp
 
+
+parallel-cobain:
+	@gcc $(SOURCE_FOLDER)/matrix.c $(MP_FOLDER)/cobain.c --openmp -o $(OUTPUT_FOLDER)/cobain
+
+run-parallel-cobain:
+	@./$(OUTPUT_FOLDER)/cobain
+
+serial-cobain:
+	@gcc $(SOURCE_FOLDER)/matrix.c $(MP_FOLDER)/serial.c -o $(OUTPUT_FOLDER)/serialcobain
+
+run-serial-cobain:
+	@./$(OUTPUT_FOLDER)/serialcobain
+
+	
+
 serial:
 	@g++ src/serial/serial.cpp -o $(OUTPUT_FOLDER)/serial
 

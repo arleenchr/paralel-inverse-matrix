@@ -1,6 +1,7 @@
 // mpicc mpi.c -o mpi
 
 #include <mpi.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -66,6 +67,10 @@ int main(void) {
     char processor_name[MPI_MAX_PROCESSOR_NAME];
     int name_len;
     MPI_Get_processor_name(processor_name, &name_len);
+
+    /* Record start time */
+    MPI_Barrier(MPI_COMM_WORLD);
+    double start = MPI_Wtime();
 
     if (world_rank == 0){
         /* Init matrix */     
@@ -197,8 +202,15 @@ int main(void) {
         freeMatrix(&inputMatrix);
         freeMatrix(&identityMatrix);
     }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    double end = MPI_Wtime();
     
     MPI_Finalize();
+
+    if (world_rank == 0){
+        printf("Time taken is %.6f\n", end-start);
+    }
 
     return 0;
 }
