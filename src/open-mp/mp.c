@@ -1,11 +1,11 @@
-// gcc mp.c --openmp -o mp
-
 #include <omp.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include "../matrix.h"
+
 
 /*Getter: row in a certain index*/
 double* getRow (Matrix m, size_t rowNum){
@@ -43,15 +43,6 @@ void swapRow(Matrix* matrix, int row1, int row2){
 }
 
 int main(void) {
-    // #pragma omp parallel num_threads(8) 
-    // {
-    //     int nthreads, tid;
-    //     nthreads = omp_get_num_threads();
-    //     tid = omp_get_thread_num();
-    //     printf("Hello world from from thread %d out of %d threads\n", tid, nthreads);
-    // }
-
-    /* Init Matrix */
     Matrix inputMatrix;
     Matrix identityMatrix;
     int size;
@@ -61,62 +52,69 @@ int main(void) {
     size = inputMatrix.col;
 
     bool invertible = true;
+    
+    #pragma omp barrier
+    double start = omp_get_wtime();
 
-    #pragma omp parallel for num_threads(8) shared(inputMatrix, identityMatrix, invertible, size)
     for (size_t i = 0; i < size; i++){
         /* Partial Pivoting */
         /* Swapping indivisible row */
         double* colBuffer = getColFromMatrix(inputMatrix, i);
-        if (colBuffer[i] == 0.){
-            // Swap rows
-            // search for the nearest non-zero row
-            for (size_t swapIdx = i+1; swapIdx < size; swapIdx++){
-                if (colBuffer[swapIdx] != 0.){
-                    #pragma omp critical
-                    {
-                        swapRow(&inputMatrix, i, swapIdx);
-                        swapRow(&identityMatrix, i, swapIdx);
-                    }
+        int swapIdx = -1;
+
+        if (colBuffer[i] == 0. && invertible) {
+            // Search for the nearest non-zero row
+            for (size_t j = i + 1; j < size; j++) {
+                if (colBuffer[j] != 0.) {
+                    swapIdx = j;
                     break;
-                } else if (swapIdx == size - 1){
-                    #pragma omp critical
-                    {
-                        invertible = false;
-                        fprintf(stderr, "Matrix can not be inversed.\n");
-                    }
+                } else if (j == size - 1) {
+                    invertible = false;
+                    fprintf(stderr, "Matrix cannot be inversed.\n");
                 }
-            }      
+            }
         }
 
-        // Ensure all threads have checked invertibility before proceeding
-        // #pragma omp barrier
+        if (swapIdx != -1) {
+            swapRow(&inputMatrix, i, swapIdx);
+            swapRow(&identityMatrix, i, swapIdx);
+        }
+
+        free(colBuffer);
+
         if (!invertible) {
             exit(1);
         }
 
-        // The matrix is now can be inverted
+    /* Eliminating */
+    /* Reducing to upper triangle matrix */
+        double eliminateFactor;
+        #pragma omp for
+        for (size_t j = 0; j < size; j++){
+            if (i != j){
+                eliminateFactor = inputMatrix.buffer[j * size + i] / inputMatrix.buffer[i * size + i];
+                for (size_t k = 0; k < size; k++){
+                    inputMatrix.buffer[j * size + k] -= inputMatrix.buffer[i * size + k] * eliminateFactor;
+                    identityMatrix.buffer[j * size + k] -= identityMatrix.buffer[i * size + k] * eliminateFactor;
+                }
+            }
+        }
         /* Divide the row by the pivot factor */
         double pivotFactor = inputMatrix.buffer[i * size + i];
 
-        // #pragma omp for
+        #pragma omp for
         for (int j = 0; j < size; j++){
             inputMatrix.buffer[i * size + j] /= pivotFactor;
             identityMatrix.buffer[i * size + j] /= pivotFactor;
-        }
-        
-        /* Eliminating */
-        // #pragma omp for
-        for (size_t j = i + 1; j < size; j++){
-            double eliminateFactor = inputMatrix.buffer[j * size + i];
-            for (size_t col = 0; col < size; col++){
-                inputMatrix.buffer[j * size + col] -= inputMatrix.buffer[i * size + col] * eliminateFactor;
-                identityMatrix.buffer[j * size + col] -= identityMatrix.buffer[i * size + col] * eliminateFactor;
-            }
         }
     }
 
     printf("%d\n",size);
     printMatrix(identityMatrix);
+
+    #pragma omp barrier
+    double end = omp_get_wtime();
+    printf("Time taken is %.6f\n", end-start);
 
     return 0;
 }
