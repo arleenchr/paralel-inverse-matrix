@@ -86,10 +86,11 @@ int main(void) {
             exit(1);
         }
 
-    /* Eliminating */
-    /* Reducing to upper triangle matrix */
+        /* Eliminating */
+        /* Reducing to upper triangle matrix */
         double eliminateFactor;
-        #pragma omp for
+
+        #pragma omp for schedule(dynamic, 1)
         for (size_t j = 0; j < size; j++){
             if (i != j){
                 eliminateFactor = inputMatrix.buffer[j * size + i] / inputMatrix.buffer[i * size + i];
@@ -102,7 +103,7 @@ int main(void) {
         /* Divide the row by the pivot factor */
         double pivotFactor = inputMatrix.buffer[i * size + i];
 
-        #pragma omp for
+        #pragma omp for schedule(dynamic, 1)
         for (int j = 0; j < size; j++){
             inputMatrix.buffer[i * size + j] /= pivotFactor;
             identityMatrix.buffer[i * size + j] /= pivotFactor;

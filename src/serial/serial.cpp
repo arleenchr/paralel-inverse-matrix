@@ -5,6 +5,7 @@
  **/
 
 #include<iostream>
+#include <time.h>
 using namespace std;
 
 int main()
@@ -14,6 +15,8 @@ int main()
     double d = 0.0;
     
     cin >> n;
+
+    clock_t start = clock();
     
     // Allocating memory for matrix array
     mat = new double*[2*n];
@@ -82,6 +85,8 @@ int main()
             mat[i][j] = mat[i][j]/d;
         }
     }
+
+    clock_t end = clock();
     
     cout << n << endl;
     for(i=0; i < n; ++i)
@@ -92,6 +97,8 @@ int main()
         }
         cout << endl;
     }
+
+    printf("Time taken is %.6f\n", (double) (end-start) / CLOCKS_PER_SEC);
     
     // Deleting the memory allocated
     for (i = 0; i < n; ++i)
