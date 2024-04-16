@@ -56,19 +56,38 @@ __global__ void eliminate(double* inputMatrix, double* identityMatrix, int size,
 	size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
     if (row < size && col < size && row != it){ // cari eliminate factor perbaris
         // perkolom buat thread untuk ngurangin
+        if (abs(inputMatrix[it * size + it]) < 0.01){
+            // printf("Zero!! %.6f\n", inputMatrix[it * size + it]);
+        }
         double eliminateFactor = inputMatrix[row * size + it] / inputMatrix[it * size + it];
-        inputMatrix[row * size + col] -= inputMatrix[it * size + col] * eliminateFactor;
-        identityMatrix[row * size + col] -= identityMatrix[it * size + col] * eliminateFactor;
+        if (eliminateFactor > 20){
+            // printf("Huge eliminateFactor %.4f from %.4f %.4f iteration %d\n", eliminateFactor, inputMatrix[row * size + it], inputMatrix[it * size + it], it);
+        }
+        if (threadIdx.z == 0){
+            inputMatrix[row * size + col] -= inputMatrix[it * size + col] * eliminateFactor;
+        }
+        if (threadIdx.z == 1){
+            identityMatrix[row * size + col] -= identityMatrix[it * size + col] * eliminateFactor;
+        }
+        __syncthreads();
     }
 }
 
 __global__ void reduce(double* inputMatrix, double* identityMatrix, int size, size_t it){
     size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
 	size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
-    if (row < size && col < size && row != it){
+    if (row < size && col < size && row == it){
         double pivotFactor = inputMatrix[it * size + it];
-        inputMatrix[it * size + col] /= pivotFactor;
-        identityMatrix[it * size + col] /= pivotFactor;
+        if (abs(pivotFactor) < 0.01){
+            // printf("Zero!! %.6f\n", pivotFactor);
+        }
+        if (threadIdx.z == 0){
+            inputMatrix[it * size + col] /= pivotFactor;
+        }
+        if (threadIdx.z == 1){
+            identityMatrix[it * size + col] /= pivotFactor;
+        }
+        __syncthreads();
     }
 }
 
@@ -82,7 +101,7 @@ int main(void) {
     size = inputMatrix.col;
     bool invertible = true;
 
-    dim3 block(16,16);
+    dim3 block(16,16,2);
     int gridRow = (size+16)/16;
     int gridCol = (size+16)/16;
     dim3 grid(gridRow,gridCol);
@@ -140,6 +159,7 @@ int main(void) {
         if (!invertible) {
             exit(1);
         }
+        free(colBuffer);
 
         cudaMemcpy(d_inputMatrix, inputMatrix.buffer, size * size * sizeof(double), cudaMemcpyHostToDevice);
         CUDA_CHECK_ERROR();
@@ -154,26 +174,17 @@ int main(void) {
         CUDA_CHECK_ERROR();
 
         eliminate<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
+        CUDA_CHECK_ERROR();
         cudaDeviceSynchronize();
 
         reduce<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
+        CUDA_CHECK_ERROR();
         cudaDeviceSynchronize();
 
         cudaMemcpy(inputMatrix.buffer, d_inputMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
         cudaMemcpy(identityMatrix.buffer, d_identityMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
         cudaMemcpy(&invertible, d_invertible, sizeof(bool), cudaMemcpyDeviceToHost);
         CUDA_CHECK_ERROR();
-    }
-
-    /* Reducing to diagonal matrix */
-    for (size_t i = 0; i < size; i++){
-        /* Divide the row by the pivot factor */
-        double pivotFactor = inputMatrix.buffer[i * size + i];
-
-        for (int j = 0; j < size; j++){
-            inputMatrix.buffer[i * size + j] /= pivotFactor;
-            identityMatrix.buffer[i * size + j] /= pivotFactor;
-        }
     }
 
     printf("%d\n", size);
