@@ -16,55 +16,59 @@ extern "C"{
     } \
 } while(0)
 
-__device__ void swapRow(double *matrix, int row1, int row2, int *size){
-    int startIndexRow1 = row1 * (*size);
-    int startIndexRow2 = row2 * (*size);
-    
-    double* temp_row = (double*)malloc((*size) * sizeof(double));
+/*Getter: row in a certain index*/
+double* getRow (Matrix m, size_t rowNum){
+    double* row = (double *)calloc(m.col, sizeof(double));
+    memcpy(row, &(m.buffer[rowNum * m.row]), m.row * sizeof(double));
+    return row;
+}
+
+/*Swap row with another row*/
+void swapRow(Matrix* matrix, int row1, int row2){
+    if(row1 < 0 || row1 >= matrix->row || row2 < 0 || row2 >= matrix->row){
+        fprintf(stderr, "Invalid row indices\n");
+        return;
+    }
+
+    int startIndexRow2 = row2 * matrix->col;
+    int startIndexRow1 = row1 * matrix->col;
+
+    double* temp_row = (double*)malloc(matrix->col * sizeof(double));
     if(temp_row == NULL){
-        printf("Memory allocation failed\n");
+        fprintf(stderr, "Memory allocation failed\n");
         return;
     }
 
     // Copy row1 to temp_row
-    memcpy(temp_row, &(matrix[startIndexRow1]), (*size) * sizeof(double));
+    memcpy(temp_row, &(matrix->buffer[startIndexRow1]), matrix->col * sizeof(double));
 
     // Copy row2 to row1
-    memcpy(&(matrix[startIndexRow1]), &(matrix[startIndexRow2]), (*size) * sizeof(double));
+    memcpy(&(matrix->buffer[startIndexRow1]), &(matrix->buffer[startIndexRow2]), matrix->col * sizeof(double));
 
     // Copy temp_row to row2
-    memcpy(&(matrix[startIndexRow2]), temp_row, (*size) * sizeof(double));
+    memcpy(&(matrix->buffer[startIndexRow2]), temp_row, matrix->col * sizeof(double));
 
     free(temp_row);
 }
 
-__device__ double* getColFromMatrixBuffer(double *m, int *size, int colNum){
-    double* col = (double *)malloc((*size) * sizeof(double));
-
-    for (int i = 0; i < *size; i++){
-        col[i] = m[i * (*size) + colNum];
+__global__ void eliminate(double* inputMatrix, double* identityMatrix, int size, size_t it){
+    size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
+	size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
+    if (row < size && col < size && row != it){ // cari eliminate factor perbaris
+        // perkolom buat thread untuk ngurangin
+        double eliminateFactor = inputMatrix[row * size + it] / inputMatrix[it * size + it];
+        inputMatrix[row * size + col] -= inputMatrix[it * size + col] * eliminateFactor;
+        identityMatrix[row * size + col] -= identityMatrix[it * size + col] * eliminateFactor;
     }
-    
-    return col;
 }
 
-__global__ void pivoting(double *inputBuffer, double *identityBuffer, int *size, bool *invertible){
-    for (int i = 0; i < *size; i++){
-        double* colBuffer = getColFromMatrixBuffer(inputBuffer, size, i);
-        
-        if (colBuffer[i] == 0.){
-            for (int swapIdx = i+1; swapIdx < *size; swapIdx++){
-                if (colBuffer[swapIdx] != 0.){
-                    // printf("SWAP\n");
-                    swapRow(inputBuffer, i, swapIdx, size);
-                    swapRow(identityBuffer, i, swapIdx, size);
-                    break;
-                } else if (swapIdx == *size - 1){
-                    *invertible = false;
-                    printf("Matrix can not be inversed.\n");
-                }
-            }
-        }
+__global__ void reduce(double* inputMatrix, double* identityMatrix, int size, size_t it){
+    size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
+	size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
+    if (row < size && col < size && row != it){
+        double pivotFactor = inputMatrix[it * size + it];
+        inputMatrix[it * size + col] /= pivotFactor;
+        identityMatrix[it * size + col] /= pivotFactor;
     }
 }
 
@@ -78,8 +82,10 @@ int main(void) {
     size = inputMatrix.col;
     bool invertible = true;
 
-    dim3 block(256,1,1);
-    dim3 grid((size + block.x - 1) / block.x, 1, 1);
+    dim3 block(16,16);
+    int gridRow = (size+16)/16;
+    int gridCol = (size+16)/16;
+    dim3 grid(gridRow,gridCol);
 
     // GPU allocation memory
     double *d_inputMatrix;
@@ -104,56 +110,74 @@ int main(void) {
     cudaMalloc((void **)&d_size, sizeof(int));
     CUDA_CHECK_ERROR();
 
-    cudaMemcpy(d_inputMatrix, inputMatrix.buffer, size * size * sizeof(double), cudaMemcpyHostToDevice);
-    CUDA_CHECK_ERROR();
-
-    cudaMemcpy(d_identityMatrix, identityMatrix.buffer, size * size * sizeof(double), cudaMemcpyHostToDevice);
-    CUDA_CHECK_ERROR();
-
-    cudaMemcpy(d_invertible, &invertible, sizeof(bool), cudaMemcpyHostToDevice);
-    CUDA_CHECK_ERROR();
-
-    cudaMemcpy(d_size, &size, sizeof(int), cudaMemcpyHostToDevice);
-    CUDA_CHECK_ERROR();
-
     /* Start clock */
     clock_t start = clock();
 
-    /* Partial Pivoting */
-    pivoting<<<grid,block>>>(d_inputMatrix, d_identityMatrix, d_size, d_invertible);
-    cudaDeviceSynchronize();
+    for (size_t i = 0; i < size; i++){
+        /* Partial Pivoting */
+        /* Swapping indivisible row */
+        double* colBuffer = getColFromMatrix(inputMatrix, i);
 
-    if (!d_invertible){
-        return;
-    }
-
-    cudaMemcpy(inputMatrix.buffer, d_inputMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
-    cudaMemcpy(identityMatrix.buffer, d_identityMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&invertible, d_invertible, sizeof(bool), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&size, d_size, sizeof(int), cudaMemcpyDeviceToHost);
-
-    
-    printf("Input matrix:\n");
-    double *inputMatrixHost = (double *)malloc(size * size * sizeof(double));
-    cudaMemcpy(inputMatrixHost, d_inputMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
-    for (size_t i = 0; i < size; i++) {
-        for (size_t j = 0; j < size; j++) {
-            printf("%.4f\t", inputMatrixHost[i * size + j]);
+        if (colBuffer[i] == 0.){
+            // Swap rows
+            // search for the nearest non-zero row
+            for (size_t swapIdx = i+1; swapIdx < size; swapIdx++){
+                if (colBuffer[swapIdx] != 0.){
+                    {
+                        swapRow(&inputMatrix, i, swapIdx);
+                        swapRow(&identityMatrix, i, swapIdx);
+                    }
+                    break;
+                } else if (swapIdx == size - 1){
+                    {
+                        invertible = false;
+                        fprintf(stderr, "Matrix can not be inversed.\n");
+                    }
+                }
+            }
         }
-        printf("\n");
-    }
-    free(inputMatrixHost);
-
-    printf("Identity matrix:\n");
-    double *identityMatrixHost = (double *)malloc(size * size * sizeof(double));
-    cudaMemcpy(identityMatrixHost, d_identityMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
-    for (size_t i = 0; i < size; i++) {
-        for (size_t j = 0; j < size; j++) {
-            printf("%.4f\t", identityMatrixHost[i * size + j]);
+        // Ensure all threads have checked invertibility before proceeding
+        if (!invertible) {
+            exit(1);
         }
-        printf("\n");
+
+        cudaMemcpy(d_inputMatrix, inputMatrix.buffer, size * size * sizeof(double), cudaMemcpyHostToDevice);
+        CUDA_CHECK_ERROR();
+
+        cudaMemcpy(d_identityMatrix, identityMatrix.buffer, size * size * sizeof(double), cudaMemcpyHostToDevice);
+        CUDA_CHECK_ERROR();
+
+        cudaMemcpy(d_invertible, &invertible, sizeof(bool), cudaMemcpyHostToDevice);
+        CUDA_CHECK_ERROR();
+
+        cudaMemcpy(d_size, &size, sizeof(int), cudaMemcpyHostToDevice);
+        CUDA_CHECK_ERROR();
+
+        eliminate<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
+        cudaDeviceSynchronize();
+
+        reduce<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
+        cudaDeviceSynchronize();
+
+        cudaMemcpy(inputMatrix.buffer, d_inputMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
+        cudaMemcpy(identityMatrix.buffer, d_identityMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&invertible, d_invertible, sizeof(bool), cudaMemcpyDeviceToHost);
+        CUDA_CHECK_ERROR();
     }
-    free(identityMatrixHost);
+
+    /* Reducing to diagonal matrix */
+    for (size_t i = 0; i < size; i++){
+        /* Divide the row by the pivot factor */
+        double pivotFactor = inputMatrix.buffer[i * size + i];
+
+        for (int j = 0; j < size; j++){
+            inputMatrix.buffer[i * size + j] /= pivotFactor;
+            identityMatrix.buffer[i * size + j] /= pivotFactor;
+        }
+    }
+
+    printf("%d\n", size);
+    printMatrix(identityMatrix);
 
     /* Stop clock */
     clock_t end = clock();
