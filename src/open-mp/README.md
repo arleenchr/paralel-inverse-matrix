@@ -24,8 +24,8 @@ Program inverse matrix paralel dengan Open MP ini dapat dijalankan dengan cara
 <br> Contoh build, run, dan menyimpan output untuk test case `128.txt`
 
 ```console
-user@user:~/kit-tucil-sister-2024$ make parallel-mp
-user@user:~/kit-tucil-sister-2024$ make run-parallel-mp < test_cases/128.txt > bin/128-inversed.txt
+user@user:~/if3230-tucil-cudalumping$ make parallel-mp
+user@user:~/if3230-tucil-cudalumping$ make run-parallel-mp < test_cases/128.txt > bin/128-inversed.txt
 ```
 
 ### Serial
@@ -33,6 +33,6 @@ user@user:~/kit-tucil-sister-2024$ make run-parallel-mp < test_cases/128.txt > b
 Contoh build, run, dan menyimpan output untuk test case `128.txt`.
 
 ```console
-user@user:~/kit-tucil-sister-2024$ make serial
-user@user:~/kit-tucil-sister-2024$ make run-serial < test_cases/128.txt > bin/128-inversed.txt
+user@user:~/if3230-tucil-cudalumping$ make serial
+user@user:~/if3230-tucil-cudalumping$ make run-serial < test_cases/128.txt > bin/128-inversed.txt
 ```
