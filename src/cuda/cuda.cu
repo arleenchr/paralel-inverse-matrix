@@ -7,6 +7,7 @@ extern "C"{
   #include "matrix.h"
 };
 
+// Check error function
 #define CUDA_CHECK_ERROR() do { \
     cudaError_t err = cudaGetLastError(); \
     if (err != cudaSuccess) { \
@@ -31,7 +32,6 @@ void swapRow(Matrix* matrix, int row1, int row2){
 
     int startIndexRow2 = row2 * matrix->col;
     int startIndexRow1 = row1 * matrix->col;
-
     double* temp_row = (double*)malloc(matrix->col * sizeof(double));
     if(temp_row == NULL){
         fprintf(stderr, "Memory allocation failed\n");
@@ -50,6 +50,7 @@ void swapRow(Matrix* matrix, int row1, int row2){
     free(temp_row);
 }
 
+// Subtract function: to subtract each element with their corresponding factor
 __global__ void eliminate(double* inputMatrix, double* identityMatrix, int size, size_t it){
     size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
 	size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
@@ -63,6 +64,7 @@ __global__ void eliminate(double* inputMatrix, double* identityMatrix, int size,
     }
 }
 
+// Clean all the zero element
 __global__ void normalize(double* inputMatrix, double* identityMatrix, int size, size_t it){
     size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
 	size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
@@ -72,9 +74,10 @@ __global__ void normalize(double* inputMatrix, double* identityMatrix, int size,
     }
 }
 
+// Pivoting function: divide each element of matrix with their diagonal element
 __global__ void reduce_nodiag(double* inputMatrix, double* identityMatrix, int size, size_t it){
     size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
-	  size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
+	size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
     if (row < size && col < size && row == it && row != col){
         double pivotFactor = inputMatrix[it * size + it];
         inputMatrix[it * size + col] /= pivotFactor;
@@ -82,6 +85,7 @@ __global__ void reduce_nodiag(double* inputMatrix, double* identityMatrix, int s
     }
 }
 
+// Pivoting function: convert diagonal elements to 1
 __global__ void reduce_diag(double* inputMatrix, double* identityMatrix, int size, size_t it){
     size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
 	  size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
@@ -93,6 +97,7 @@ __global__ void reduce_diag(double* inputMatrix, double* identityMatrix, int siz
     }
 }
 
+// Main program
 int main(void) {
     Matrix inputMatrix;
     Matrix identityMatrix;
@@ -103,7 +108,10 @@ int main(void) {
     size = inputMatrix.col;
     bool invertible = true;
 
+    // Thread per block
     dim3 block(16,16);
+
+    // Block per thread
     int gridRow = (size+15)/16;
     int gridCol = (size+15)/16;
     dim3 grid(gridRow,gridCol);
@@ -126,8 +134,10 @@ int main(void) {
     cudaMalloc((void **)&d_size, sizeof(int));
     CUDA_CHECK_ERROR();
 
+    // Iteration for each row in matrix
     for (size_t i = 0; i < size; i++){
         /* Partial Pivoting */
+
         /* Swapping indivisible row */
         double* colBuffer = getColFromMatrix(inputMatrix, i);
 
@@ -155,6 +165,7 @@ int main(void) {
         }
         free(colBuffer);
 
+        // Copy matrix to GPU variable
         cudaMemcpy(d_inputMatrix, inputMatrix.buffer, size * size * sizeof(double), cudaMemcpyHostToDevice);
         CUDA_CHECK_ERROR();
 
@@ -167,34 +178,43 @@ int main(void) {
         cudaMemcpy(d_size, &size, sizeof(int), cudaMemcpyHostToDevice);
         CUDA_CHECK_ERROR();
 
+        // Gauss-Jordan Elimination
+        // Elements normalization
         reduce_nodiag<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
         CUDA_CHECK_ERROR();
 
+        // Diagonal normalization
         reduce_diag<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
         CUDA_CHECK_ERROR();
 
+        // Elimination for each elements
         eliminate<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
         CUDA_CHECK_ERROR();
 
+        // Matix normalization
         normalize<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
         CUDA_CHECK_ERROR();
 
         cudaDeviceSynchronize();
 
+        // Assign the initial matrices with elimination result
         cudaMemcpy(inputMatrix.buffer, d_inputMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
         cudaMemcpy(identityMatrix.buffer, d_identityMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
         cudaMemcpy(&invertible, d_invertible, sizeof(bool), cudaMemcpyDeviceToHost);
         CUDA_CHECK_ERROR();
     }
 
+    // Display result
     printf("%d\n", size);
     printMatrix(identityMatrix);
 
+    // CUDA deallocation
     cudaFree(d_inputMatrix);
     cudaFree(d_identityMatrix);
     cudaFree(d_invertible);
     cudaFree(d_size);
 
+    // Memory deallocation
     freeMatrix(&inputMatrix);
     freeMatrix(&identityMatrix);
 
