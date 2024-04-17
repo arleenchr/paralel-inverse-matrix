@@ -1,4 +1,3 @@
-#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -54,40 +53,43 @@ void swapRow(Matrix* matrix, int row1, int row2){
 __global__ void eliminate(double* inputMatrix, double* identityMatrix, int size, size_t it){
     size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
 	size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
-    if (row < size && col < size && row != it){ // cari eliminate factor perbaris
-        // perkolom buat thread untuk ngurangin
-        if (abs(inputMatrix[it * size + it]) < 0.01){
-            // printf("Zero!! %.6f\n", inputMatrix[it * size + it]);
+
+    if (row < size && col < size && row != it){
+        identityMatrix[row * size + col] -= identityMatrix[it * size + col] * inputMatrix[row * size + it];
+        
+        if (col != it) {
+            inputMatrix[row * size + col] -= inputMatrix[it * size + col] * inputMatrix[row * size + it];
         }
-        double eliminateFactor = inputMatrix[row * size + it] / inputMatrix[it * size + it];
-        if (eliminateFactor > 20){
-            // printf("Huge eliminateFactor %.4f from %.4f %.4f iteration %d\n", eliminateFactor, inputMatrix[row * size + it], inputMatrix[it * size + it], it);
-        }
-        if (threadIdx.z == 0){
-            inputMatrix[row * size + col] -= inputMatrix[it * size + col] * eliminateFactor;
-        }
-        if (threadIdx.z == 1){
-            identityMatrix[row * size + col] -= identityMatrix[it * size + col] * eliminateFactor;
-        }
-        __syncthreads();
     }
 }
 
-__global__ void reduce(double* inputMatrix, double* identityMatrix, int size, size_t it){
+__global__ void normalize(double* inputMatrix, double* identityMatrix, int size, size_t it){
     size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
 	size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
-    if (row < size && col < size && row == it){
+
+    if (row < size && col < size && row != it && col == it) {
+       inputMatrix[row * size + col] = 0;
+    }
+}
+
+__global__ void reduce_nodiag(double* inputMatrix, double* identityMatrix, int size, size_t it){
+    size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
+	  size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
+    if (row < size && col < size && row == it && row != col){
         double pivotFactor = inputMatrix[it * size + it];
-        if (abs(pivotFactor) < 0.01){
-            // printf("Zero!! %.6f\n", pivotFactor);
-        }
-        if (threadIdx.z == 0){
-            inputMatrix[it * size + col] /= pivotFactor;
-        }
-        if (threadIdx.z == 1){
-            identityMatrix[it * size + col] /= pivotFactor;
-        }
-        __syncthreads();
+        inputMatrix[it * size + col] /= pivotFactor;
+        identityMatrix[it * size + col] /= pivotFactor;
+    }
+}
+
+__global__ void reduce_diag(double* inputMatrix, double* identityMatrix, int size, size_t it){
+    size_t row = (blockIdx.x*blockDim.x) + threadIdx.x;
+	  size_t col = (blockIdx.y*blockDim.y) + threadIdx.y;
+    if (row < size && col < size && row == col && row == it){
+        double pivotFactor = inputMatrix[it * size + it];
+
+        inputMatrix[it * size + col] /= pivotFactor;
+        identityMatrix[it * size + col] /= pivotFactor;
     }
 }
 
@@ -95,15 +97,15 @@ int main(void) {
     Matrix inputMatrix;
     Matrix identityMatrix;
     int size;
-
+    
     inputMatrix = readMatrixFromFile();
     identityMatrix = createIdentityMatrix(inputMatrix.col);
     size = inputMatrix.col;
     bool invertible = true;
 
-    dim3 block(16,16,2);
-    int gridRow = (size+16)/16;
-    int gridCol = (size+16)/16;
+    dim3 block(16,16);
+    int gridRow = (size+15)/16;
+    int gridCol = (size+15)/16;
     dim3 grid(gridRow,gridCol);
 
     // GPU allocation memory
@@ -111,11 +113,6 @@ int main(void) {
     double *d_identityMatrix;
     bool *d_invertible;
     int *d_size;
-
-    // size_t free_bytes, total_bytes;
-    // cudaMemGetInfo(&free_bytes, &total_bytes);
-    // printf("Available device memory: %zu bytes\n", free_bytes);
-    // printf("Total device memory: %zu bytes\n", total_bytes);
 
     cudaMalloc((void **)&d_inputMatrix, size * size * sizeof(double));
     CUDA_CHECK_ERROR();
@@ -128,9 +125,6 @@ int main(void) {
 
     cudaMalloc((void **)&d_size, sizeof(int));
     CUDA_CHECK_ERROR();
-
-    /* Start clock */
-    clock_t start = clock();
 
     for (size_t i = 0; i < size; i++){
         /* Partial Pivoting */
@@ -173,12 +167,18 @@ int main(void) {
         cudaMemcpy(d_size, &size, sizeof(int), cudaMemcpyHostToDevice);
         CUDA_CHECK_ERROR();
 
+        reduce_nodiag<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
+        CUDA_CHECK_ERROR();
+
+        reduce_diag<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
+        CUDA_CHECK_ERROR();
+
         eliminate<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
         CUDA_CHECK_ERROR();
-        cudaDeviceSynchronize();
 
-        reduce<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
+        normalize<<<grid,block>>>(d_inputMatrix, d_identityMatrix, size, i);
         CUDA_CHECK_ERROR();
+
         cudaDeviceSynchronize();
 
         cudaMemcpy(inputMatrix.buffer, d_inputMatrix, size * size * sizeof(double), cudaMemcpyDeviceToHost);
@@ -190,15 +190,13 @@ int main(void) {
     printf("%d\n", size);
     printMatrix(identityMatrix);
 
-    /* Stop clock */
-    clock_t end = clock();
-    double exectime = (double) (end - start) / CLOCKS_PER_SEC;
-    printf("Time taken is %.6f\n", exectime);
-
     cudaFree(d_inputMatrix);
     cudaFree(d_identityMatrix);
     cudaFree(d_invertible);
     cudaFree(d_size);
+
+    freeMatrix(&inputMatrix);
+    freeMatrix(&identityMatrix);
 
     return 0;
 }
